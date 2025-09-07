@@ -1,0 +1,223 @@
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+from tkinter import Tk, filedialog
+
+# =============== UTILIDADES BÁSICAS ===============
+
+def select_two_image_paths():
+    """Abre un diálogo para seleccionar exactamente 2 imágenes."""
+    Tk().withdraw()
+    paths = filedialog.askopenfilenames(
+        title="Selecciona 2 imágenes",
+        filetypes=[("Imágenes", "*.jpg *.jpeg *.png *.bmp *.gif *.tiff")]
+    )
+    paths = list(paths)
+    if len(paths) < 2:
+        raise ValueError("Debes seleccionar al menos 2 imágenes.")
+    return paths[:2]
+
+def load_image_vector(path, size=(260, 260), mode="RGB", normalize=True):
+    """Carga una imagen, la convierte a 'mode', redimensiona a 'size' y devuelve vector 1D float64."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"No existe: {path}")
+    img = Image.open(path).convert(mode)
+    img = img.resize(size)
+    arr = np.array(img, dtype=np.float64)
+    if normalize:
+        arr = arr / 255.0
+    vec = arr.flatten()
+    return img, vec
+
+# =============== NÚCLEO: SOLUCIÓN ANALÍTICA + GD ===============
+
+def solve_projection(a, b, auto_eta=True, eta=None, iters=500, title="", 
+                     c_auto=0.2, tol_grad=1e-12, tol_w=1e-10, verbose=True, plot=True):
+    """
+    Calcula proyección analítica y por GD 1D de b sobre a.
+    Ajusta automáticamente eta para que w_GD ≈ w*.
+    - c_auto: fracción del paso 'óptimo' (eta = c_auto / A). Usa 0.5 para converger casi en 1 paso.
+    - tol_grad: tolerancia en la norma del gradiente (parada).
+    - tol_w: tolerancia para comparar w_GD vs w*.
+    - plot: si True, grafica J(w), trayectoria GD y punto analítico.
+    """
+    a = np.asarray(a, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64)
+    assert a.shape == b.shape, "a y b deben tener la misma forma"
+
+    # --- Analítica ---
+    denom = np.dot(a, a) + 1e-12
+    w_star = float(np.dot(a, b) / denom)
+
+    # --- Parámetros coherentes con J(w)=mean((w a - b)^2) ---
+    N = a.size
+    A = np.dot(a, a) / N
+    B = np.dot(a, b) / N
+
+    if auto_eta:
+        eta = float(c_auto / (A + 1e-18))  # paso adaptado y estable
+    elif eta is None:
+        eta = 1e-3
+
+    def J(w):
+        err = w * a - b
+        return float(np.mean(err**2))
+
+    # --- Gradiente Descendente 1D ---
+    w = 0.0
+    w_hist = [w]
+    J_hist = [J(w)]
+    for t in range(iters):
+        # grad = 2(Aw - B)
+        grad = 2.0 * (A * w - B)
+        if abs(grad) < tol_grad:
+            break
+        w_next = w - eta * grad
+        # parada por cambio pequeño en w
+        if abs(w_next - w) < tol_w * max(1.0, abs(w)):
+            w = w_next
+            w_hist.append(w)
+            J_hist.append(J(w))
+            break
+        w = w_next
+        w_hist.append(w)
+        J_hist.append(J(w))
+
+    w_gd_final = w
+    if verbose:
+        print("\n=== Resumen proyección ===")
+        print(f"A={A:.6e}  B={B:.6e}  eta={eta:.6e}")
+        print(f"w* analítico: {w_star:.12f}")
+        print(f"w_final GD  : {w_gd_final:.12f}")
+        print(f"|w_GD - w*| : {abs(w_gd_final - w_star):.3e}")
+        print(f"J(w*)       : {J(w_star):.12e}")
+        print(f"J(w_GD)     : {J_hist[-1]:.12e}")
+        print(f"Iteraciones : {len(w_hist)-1}")
+        if abs(w_gd_final - w_star) > tol_w:
+            print("⚠️ Aviso: w_GD y w* difieren más que la tolerancia. "
+                  "Prueba aumentar iters o usar c_auto más grande (p.ej. 0.5).")
+        print("==========================\n")
+
+    # --- Gráfica opcional ---
+    if plot:
+        import matplotlib.pyplot as plt
+        w_path = np.array(w_hist); J_path = np.array(J_hist)
+        w_lo = min(w_path.min(), w_star); w_hi = max(w_path.max(), w_star)
+        pad_x = 0.3 * max(w_hi - w_lo, 1.0)
+        w_grid = np.linspace(w_lo - pad_x, w_hi + pad_x, 400)
+        J_grid = [J(wv) for wv in w_grid]
+        J_star = J(w_star)
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(w_grid, J_grid, label="J(w) = MSE(w·a, b)")
+        plt.plot(w_path, J_path, marker='o', linewidth=1.5, label='GD Trajectory')
+        plt.plot([w_star], [J_star], 'go', markersize=8, label='Analytic Solution (w*)')
+
+        dw = np.diff(w_path); dJ = np.diff(J_path)
+        if len(dw) > 0:
+            rng_w = max(w_hi - w_lo, 1e-9)
+            rng_J = max(J_path.max() - J_path.min(), 1e-9)
+            s_w = 0.2 * rng_w / (np.max(np.abs(dw)) + 1e-12)
+            s_J = 0.2 * rng_J / (np.max(np.abs(dJ)) + 1e-12)
+            step = max(1, len(dw) // 20)
+            plt.quiver(w_path[:-1:step], J_path[:-1:step],
+                       (dw * s_w)[::step], (dJ * s_J)[::step],
+                       angles='xy', scale_units='xy', scale=1.0,
+                       width=0.006, alpha=0.85, label='GD Steps')
+
+        plt.xlabel('w (coeficiente de proyección)')
+        plt.ylabel('Costo J(w) = MSE')
+        t = "Costo vs w — Proyección b sobre a"
+        if title:
+            t += f" ({title})"
+        plt.title(t)
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+    return {
+        "w_star": w_star,
+        "w_gd_final": w_gd_final,
+        "w_hist": w_hist,
+        "J_hist": J_hist,
+        "A": A, "B": B, "eta": eta
+    }
+
+# =============== GRÁFICA 2D PARA VECTORES CORTOS ===============
+
+def plot_2d_projection(a2, b2, w_star=None, w_gd=None):
+    """
+    Grafica en el plano:
+    - vector a
+    - vector b
+    - proyección analítica (si w_star se da)
+    - proyección GD (si w_gd se da)
+    - recta span(a)
+    """
+    a2 = np.asarray(a2, dtype=np.float64)
+    b2 = np.asarray(b2, dtype=np.float64)
+    assert a2.shape == (2,) and b2.shape == (2,), "a2 y b2 deben ser 2D"
+
+    # Proyecciones opcionales
+    proj_analytic = w_star * a2 if w_star is not None else None
+    proj_gd = w_gd * a2 if w_gd is not None else None
+
+    plt.figure(figsize=(8, 6))
+    plt.quiver(0, 0, a2[0], a2[1], angles='xy', scale_units='xy', scale=1, label='Vector a')
+    plt.quiver(0, 0, b2[0], b2[1], angles='xy', scale_units='xy', scale=1, label='Vector b')
+    if proj_analytic is not None:
+        plt.quiver(0, 0, proj_analytic[0], proj_analytic[1],
+                   angles='xy', scale_units='xy', scale=1, label='Analytic Projection')
+    if proj_gd is not None:
+        plt.plot([0, proj_gd[0]], [0, proj_gd[1]],
+                 linestyle='--', label='Gradient Descent Projection')
+
+    # Recta span(a)
+    x = np.linspace(-5, 10, 200)
+    y = (a2[1]/a2[0]) * x if a2[0] != 0 else np.zeros_like(x)
+    plt.plot(x, y, '--', alpha=0.5, label='Span of a')
+
+    plt.xlim([-2, 10])
+    plt.ylim([-2, 10])
+    plt.gca().set_aspect('equal', adjustable='box')
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.title('Proyección de b sobre a (2D)')
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+# =============== MAIN: IMÁGENES + VECTORES 2D ===============
+
+def main():
+    # --- Caso IMÁGENES ---
+    print("Selecciona 2 imágenes para proyectar b sobre a...")
+    paths = select_two_image_paths()
+    print("Imágenes seleccionadas:\n", paths[0], "\n", paths[1])
+
+    # Cargar y vectorizar (mismo tamaño/mode, normalizado a [0,1])
+    TARGET_SIZE = (260, 260)
+    MODE = "RGB"
+    _, a = load_image_vector(paths[0], size=TARGET_SIZE, mode=MODE, normalize=True)
+    _, b = load_image_vector(paths[1], size=TARGET_SIZE, mode=MODE, normalize=True)
+
+    # Resolver y graficar costo vs w
+    res_img = solve_projection(a, b, auto_eta=True, iters=300, title="Imágenes")
+
+    # --- Caso VECTORES 2D (ejemplo numérico pequeño) ---
+    a2 = np.array([3, 4], dtype=np.float64)
+    b2 = np.array([7, 1], dtype=np.float64)
+    # Reutilizamos la función de arriba para obtener w*, w_gd (sin graficar costo aquí)
+    print("Ejemplo 2D (vectores cortos):")
+    res_2d = solve_projection(a2, b2, auto_eta=True, iters=30, title="Ejemplo 2D")
+
+    # Graficar en el plano 2D la proyección analítica y la de GD
+    plot_2d_projection(a2, b2, w_star=res_2d["w_star"], w_gd=res_2d["w_gd_final"])
+
+if __name__ == "__main__":
+    main()
+
+
