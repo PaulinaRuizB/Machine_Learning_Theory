@@ -94,9 +94,6 @@ def solve_projection(a, b, auto_eta=True, eta=None, iters=500, title="",
         print(f"J(w*)       : {J(w_star):.12e}")
         print(f"J(w_GD)     : {J_hist[-1]:.12e}")
         print(f"Iteraciones : {len(w_hist)-1}")
-        if abs(w_gd_final - w_star) > tol_w:
-            print("⚠️ Aviso: w_GD y w* difieren más que la tolerancia. "
-                  "Prueba aumentar iters o usar c_auto más grande (p.ej. 0.5).")
         print("==========================\n")
 
     # --- Gráfica opcional ---
@@ -219,5 +216,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
