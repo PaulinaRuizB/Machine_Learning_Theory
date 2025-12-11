@@ -91,3 +91,9 @@ Agentic RAG goes beyond retrieval by generating multi-step, reasoning-based expl
 * Regulatory compliance
 
 This ensures transparent, traceable, and auditable decision-making.
+
+---
+
+To know more abouts this implementation you can visit the following investigation paper: 
+
+https://github.com/amalvarezme/AprendizajeMaquina/blob/main/8˙NLP˙Basics/NLP6˙LLM˙Agentes.ipynb
