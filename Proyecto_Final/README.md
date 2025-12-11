@@ -94,6 +94,10 @@ This ensures transparent, traceable, and auditable decision-making.
 
 ---
 
-To know more abouts this implementation you can visit the following investigation paper: 
+- To know more abouts this implementation you can visit the following investigation paper: 
 
 https://github.com/amalvarezme/AprendizajeMaquina/blob/main/8˙NLP˙Basics/NLP6˙LLM˙Agentes.ipynb
+
+- to download the database you can do it from this dataset in Kaggle: 
+
+https://www.kaggle.com/datasets/cristiancamiloo/powergrid-assets-ml-dataset/data/data/data
